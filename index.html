@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MonoHome" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>MonoHome</title>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">SMART HOME OS</div>
+        <h1>MonoHome</h1>
+      </div>
+      <div class="header-actions">
+        <button id="editBtn" class="ghost">Bearbeiten</button>
+        <button id="settingsBtn" class="icon-btn" aria-label="Einstellungen">⚙</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-page="dashboard">Übersicht</button>
+      <button class="tab" data-page="lights">Lampen</button>
+      <button class="tab" data-page="living">Wohnzimmer</button>
+      <button class="tab" data-page="scenes">Szenen</button>
+      <button class="tab" data-page="calibration">Kalibrierung</button>
+    </nav>
+
+    <main>
+      <section id="dashboard" class="page active">
+        <div class="hero-card">
+          <div>
+            <span class="muted">Wohnung</span>
+            <h2>5 Geräte aktiv</h2>
+            <p>2 Geräte offline · 48 % Ø Helligkeit</p>
+          </div>
+          <button class="all-off" id="allOffBtn">Alles aus</button>
+        </div>
+        <div class="section-title">
+          <h3>Favoriten</h3>
+          <span>Direktzugriff</span>
+        </div>
+        <div class="grid" id="favoriteGrid"></div>
+      </section>
+
+      <section id="lights" class="page">
+        <div class="section-title">
+          <div>
+            <h3>Alle Lampen</h3>
+            <span>Helligkeit und Farbe ohne Untermenü</span>
+          </div>
+        </div>
+        <div class="grid" id="lightsGrid"></div>
+      </section>
+
+      <section id="living" class="page">
+        <div class="section-title">
+          <div>
+            <h3>Wohnzimmer</h3>
+            <span>Komplette Raumsteuerung</span>
+          </div>
+        </div>
+        <div class="room-master">
+          <div>
+            <span class="muted">Wohnzimmerbeleuchtung</span>
+            <h2><span id="livingCount">5</span> Lampen an</h2>
+          </div>
+          <input id="roomBrightness" type="range" min="0" max="100" value="48" />
+          <button id="roomToggle" class="primary">Raum schalten</button>
+        </div>
+        <div class="grid" id="livingGrid"></div>
+      </section>
+
+      <section id="scenes" class="page">
+        <div class="section-title">
+          <div>
+            <h3>Szenen</h3>
+            <span>Ein Tipp verändert mehrere Geräte</span>
+          </div>
+        </div>
+        <div class="scene-grid" id="sceneGrid"></div>
+      </section>
+
+      <section id="calibration" class="page">
+        <div class="section-title">
+          <div>
+            <h3>Kamera-Farbkalibrierung</h3>
+            <span>Pro Lampe ein eigenes Korrekturprofil</span>
+          </div>
+        </div>
+
+        <div class="calibration-layout">
+          <div class="cal-card">
+            <label for="calDevice">Lampe auswählen</label>
+            <select id="calDevice"></select>
+
+            <div class="step-indicator">
+              <span>Messfarbe</span>
+              <strong id="calStepName">Rot</strong>
+            </div>
+
+            <div id="referenceSwatch" class="reference-swatch"></div>
+
+            <video id="camera" autoplay playsinline muted></video>
+            <canvas id="captureCanvas" hidden></canvas>
+
+            <div class="camera-actions">
+              <button id="cameraStart" class="ghost">Kamera starten</button>
+              <button id="captureBtn" class="primary" disabled>Farbe messen</button>
+            </div>
+            <p class="tip">Halte die Kamera so, dass die leuchtende Fläche möglichst groß und ohne direkte Spiegelungen sichtbar ist.</p>
+          </div>
+
+          <div class="cal-card result-card">
+            <span class="muted">Messreihe</span>
+            <div id="measurements" class="measurements"></div>
+            <button id="nextStep" class="ghost" disabled>Nächste Farbe</button>
+            <button id="saveProfile" class="primary" disabled>Profil speichern</button>
+            <pre id="profileOutput">Noch kein Profil erstellt.</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
