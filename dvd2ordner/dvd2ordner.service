@@ -1,0 +1,13 @@
+[Unit]
+Description=dvd2ordner - DVDs automatisch in einen Ordner kopieren
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/local/bin/dvd2ordner.sh
+Environment=GERAET=/dev/sr0
+Environment=ZIEL=/srv/dvd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
