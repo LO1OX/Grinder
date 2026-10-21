@@ -9,14 +9,16 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from PyQt6.QtCore import QByteArray, QFile, QIODevice, QObject, Qt, QTimer, QUrl, QUrlQuery, pyqtSlot
+from PyQt6 import sip
+from PyQt6.QtCore import (QByteArray, QEvent, QFile, QIODevice, QObject, QStandardPaths, Qt, QTimer, QUrl,
+                          QUrlQuery, pyqtSlot)
 from PyQt6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPalette
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkInformation, QNetworkRequest
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngineScript,
                                    QWebEngineSettings)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QMainWindow, QMenu, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
 
 from . import einstellungen
 from .dialog import EinstellungenDialog
@@ -76,15 +78,15 @@ zustand('{zustand}');
 # Scrollleisten wie unter GNOME (Overlay): schmal, rund, ohne Pfeile, nur beim Scrollen
 # oder unter der Maus sichtbar. Schon ab Dokumentbeginn, damit nie die eckige Leiste aufblitzt.
 SCROLLLEISTEN_CSS = (
-    "::-webkit-scrollbar{width:14px;height:14px;background:transparent}"
+    "::-webkit-scrollbar{width:10px;height:10px;background:transparent}"
     "::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}"
     "::-webkit-scrollbar-button{display:none;width:0;height:0}"
-    "::-webkit-scrollbar-thumb{min-height:40px;min-width:40px;border-radius:99px;border:5px solid transparent;"
+    "::-webkit-scrollbar-thumb{min-height:40px;min-width:40px;border-radius:99px;border:3px solid transparent;"
     "background-clip:padding-box;background-color:transparent}"
-    "::-webkit-scrollbar-thumb:vertical{border-left-width:6px}::-webkit-scrollbar-thumb:horizontal{border-top-width:6px}"
+    "::-webkit-scrollbar-thumb:vertical{border-left-width:4px}::-webkit-scrollbar-thumb:horizontal{border-top-width:4px}"
     "[data-jk-scrollt]::-webkit-scrollbar-thumb{background-color:rgba(255,255,255,.2)}"
-    "html::-webkit-scrollbar-thumb:hover,html ::-webkit-scrollbar-thumb:hover{border-width:3px;background-color:rgba(255,255,255,.4)}"
-    "html::-webkit-scrollbar-thumb:active,html ::-webkit-scrollbar-thumb:active{border-width:3px;background-color:rgba(255,255,255,.6)}"
+    "html::-webkit-scrollbar-thumb:hover,html ::-webkit-scrollbar-thumb:hover{border-width:2px;background-color:rgba(255,255,255,.4)}"
+    "html::-webkit-scrollbar-thumb:active,html ::-webkit-scrollbar-thumb:active{border-width:2px;background-color:rgba(255,255,255,.6)}"
 )
 SCROLLLEISTEN_JS = """(function(){
 if(window.__jkScroll)return;window.__jkScroll=1;
@@ -172,9 +174,11 @@ class KinoAnsicht(QWebEngineView):
         anfrage = self.lastContextMenuRequest()
         if anfrage is not None and (anfrage.isContentEditable() or anfrage.selectedText()):
             menue = self.createStandardContextMenu()
+            sip.transferto(menue, None)  # sonst gibt Python das Menü sofort wieder frei
         else:
             menue = QMenu(self)
             menue.addActions(self.actions())
+        menue.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         menue.popup(ereignis.globalPos())
 
 
@@ -238,7 +242,7 @@ class Hauptfenster(QMainWindow):
     # ------------------------------------------------------------ Aufbau
     def _web_einrichten(self):
         (DATEN / "web").mkdir(parents=True, exist_ok=True)
-        self.profil = QWebEngineProfile("jarvis-kino", self)
+        self.profil = QWebEngineProfile("jarvis-kino", QApplication.instance())
         self.profil.setPersistentStoragePath(str(DATEN / "web"))
         self.profil.setCachePath(str(DATEN / "cache"))
         self.profil.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
@@ -294,6 +298,7 @@ class Hauptfenster(QMainWindow):
         self.ansicht.setZoomFactor(float(self.einst.get("zoom") or 1.0))
         self.setCentralWidget(self.ansicht)
         self.wach_cookie = None
+        self.suche_seit = 0.0
 
     def _aktionen(self):
         def aktion(text, tasten, fn):
@@ -325,13 +330,18 @@ class Hauptfenster(QMainWindow):
 
     # --------------------------------------------------------- Adressen
     def start(self):
+        self._startseite("suche")
         if self.einst.get("app_vollbild"):
             self.showFullScreen()
         else:
             self.showMaximized()
         self._dunkle_titelleiste()
-        self._startseite("suche")
         self.adresse_suchen()
+
+    def event(self, ereignis):
+        if ereignis.type() == QEvent.Type.WinIdChange:
+            QTimer.singleShot(0, self._dunkle_titelleiste)
+        return super().event(ereignis)
 
     def _dunkle_titelleiste(self):
         """Unter XWayland zeichnet GNOME die Titelleiste – dunkel passend zum Kino."""
@@ -347,6 +357,7 @@ class Hauptfenster(QMainWindow):
     def adresse_suchen(self):
         self.wiederholen.stop()
         if not self.sucher.laeuft:
+            self.suche_seit = time.monotonic()
             log.info("Suche Jarvis unter %s", self.einst["adressen"])
             self.sucher.suchen(self.einst["adressen"])
 
@@ -385,7 +396,9 @@ class Hauptfenster(QMainWindow):
         if self.player.laeuft or self.letzter_start:
             pass  # Film läuft oder wird fortgesetzt: Kino-Seite nicht anfassen
         elif self.seite.url().toString() == "about:blank":
-            self.seite.runJavaScript("window.zustand&&zustand('fehler')")
+            # Mindestens kurz „Suche …“ zeigen, sonst wirkt der Knopf wie ohne Funktion
+            rest = int(max(0.0, 0.8 - (time.monotonic() - self.suche_seit)) * 1000)
+            QTimer.singleShot(rest, lambda: self.seite.runJavaScript("window.zustand&&zustand('fehler')"))
         else:
             self._startseite("fehler")
         if self.letzter_start and self.letzter_start.get("neustart_wartet"):
@@ -619,7 +632,8 @@ class Hauptfenster(QMainWindow):
         start_url = s["urls"][s["index"]] if s["urls"] else ""
         self.player.starten(self.einst, s["urls"], s["index"], s["daten"],
                             self._cookie_kopf(urlsplit(start_url).hostname or ""),
-                            s["referer"], self.profil.httpUserAgent())
+                            s["referer"], self.profil.httpUserAgent(),
+                            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.PicturesLocation))
 
     def _seite_meldet(self, vid):
         """True, wenn die Kino-Seite den Fortschritt dieser Folge selbst speichert."""
@@ -734,18 +748,19 @@ class Hauptfenster(QMainWindow):
         log.info("Setze Wiedergabe fort über %s", self.basis)
         self._player_starten()
 
-    def _fehler_zeigen(self, text):
+    def _fehler_zeigen(self, fehler):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Jarvis Kino – Wiedergabe")
-        box.setText("Das Video konnte nicht abgespielt werden.")
-        box.setDetailedText(text)
-        ohne_hw = box.addButton("Ohne Hardware-Beschleunigung versuchen", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("Schließen", QMessageBox.ButtonRole.RejectRole)
-        for knopf in box.buttons():
-            knopf.setIcon(QIcon())
+        box.setText(fehler.get("text") or "Das Video konnte nicht abgespielt werden.")
+        if fehler.get("details"):
+            box.setDetailedText(fehler["details"])
+        ohne_hw = None
+        if fehler.get("art") == "bild" and self.einst.get("hwdec") != "no":
+            ohne_hw = box.addButton("Ohne Hardware-Beschleunigung versuchen", QMessageBox.ButtonRole.ActionRole)
+        box.setDefaultButton(box.addButton("Schließen", QMessageBox.ButtonRole.RejectRole))
         box.exec()
-        if box.clickedButton() == ohne_hw:
+        if ohne_hw is not None and box.clickedButton() == ohne_hw:
             self.einst["hwdec"] = "no"
             einstellungen.speichern(self.einst)
             QMessageBox.information(self, "Jarvis Kino",

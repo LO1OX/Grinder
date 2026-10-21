@@ -177,6 +177,12 @@ end)
 
 -- ------------------------------------------------------------- Knöpfe
 local overlay = mp.create_osd_overlay("ass-events")
+overlay.z = -1  -- uosc-Menüs und -Leiste liegen darüber
+local menue_offen = false
+mp.observe_property("user-data/uosc/menu/type", "native", function(_, typ)
+    menue_offen = typ ~= nil and typ ~= ""
+end)
+local lade_seit, puffer_seit = nil, nil  -- für den kleinen Hinweis „Lädt …“
 local knopf = nil      -- { art, text, aktion, x, y, w, h }
 local klick_aktiv = false
 
@@ -210,10 +216,9 @@ local function maus_ueber()
 end
 
 local function knopf_ausloesen()
-    if not knopf then return false end
-    local k = knopf
-    knopf = nil
-    k.aktion()
+    if not knopf or knopf.ausgeloest then return false end
+    knopf.ausgeloest = true  -- tick() entfernt den Knopf beim nächsten Durchlauf aus dem Bild
+    knopf.aktion()
     return true
 end
 
@@ -233,7 +238,7 @@ local function zeichnen()
     overlay.res_x, overlay.res_y = w, h
     local teile = {}
 
-    if pause_seit and mp.get_time() - pause_seit > 5 and aktuelle_id then
+    if pause_seit and mp.get_time() - pause_seit > 5 and aktuelle_id and not menue_offen then
         local f = folgen_nach_id[aktuelle_id]
         local gross = h * 0.04
         local klein = h * 0.024
@@ -261,6 +266,18 @@ local function zeichnen()
             abgerundet(knopf.w, knopf.h, knopf.h * 0.3))
         teile[#teile + 1] = string.format("{\\an5\\pos(%d,%d)\\fnUbuntu\\b1\\fs%d\\bord0\\shad0\\1c%s}%s",
             knopf.x + knopf.w / 2, knopf.y + knopf.h / 2, fs, schrift, ass_text(knopf.text))
+    end
+
+    local jetzt = mp.get_time()
+    if not knopf and not menue_offen and ((lade_seit and jetzt - lade_seit > 1.5) or (puffer_seit and jetzt - puffer_seit > 1)) then
+        local fs = math.max(16, h * 0.022)
+        local text = "Lädt …"
+        local bw, bh = fs * 5.2, fs * 2
+        local x, y = w - bw - w * 0.04, h * 0.80
+        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\bord0\\shad0\\1c&H1E1C1C&\\1a&H40&\\p1}%s{\\p0}",
+            x, y, abgerundet(bw, bh, bh / 2))
+        teile[#teile + 1] = string.format("{\\an5\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad0\\1c&HB2ABAB&}%s",
+            x + bw / 2, y + bh / 2, fs, text)
     end
 
     overlay.data = table.concat(teile, "\n")
@@ -301,6 +318,11 @@ local function weiter_zur_naechsten()
     end
 end
 
+local hinweis_war = false
+mp.register_event("start-file", function() lade_seit = mp.get_time() end)
+mp.register_event("playback-restart", function() lade_seit = nil end)
+mp.observe_property("paused-for-cache", "bool", function(_, p) puffer_seit = p and mp.get_time() or nil end)
+
 local function tick()
     local t = mp.get_property_number("time-pos")
     local alt = knopf and knopf.art
@@ -334,7 +356,8 @@ local function tick()
     end
     knopf_lage()
     klick_binden(knopf ~= nil and maus_ueber())
-    if knopf or alt or pause_seit then zeichnen() end
+    if knopf or alt or pause_seit or lade_seit or puffer_seit or hinweis_war then zeichnen() end
+    hinweis_war = lade_seit ~= nil or puffer_seit ~= nil
 end
 mp.add_periodic_timer(0.25, tick)
 mp.observe_property("osd-dimensions", "native", function() zeichnen() end)
@@ -392,7 +415,7 @@ local function folgen_menue()
         return {
             title = nummer .. name,
             hint = hinweis,
-            value = { "playlist-play-index", tostring(f.index - 1) },
+            value = { "script-message-to", "jarvis", "folge", tostring(f.index - 1) },
             active = f.id == aktuelle_id,
         }
     end
@@ -444,11 +467,22 @@ local SPRACHEN = {
     dan = "Dänisch", zh = "Chinesisch", chi = "Chinesisch", zho = "Chinesisch", ar = "Arabisch", ara = "Arabisch",
 }
 
+-- Titel, die nur die Sprache wiederholen (z. B. „English“ bei Englisch), weglassen
+local SPRACH_WOERTER = {
+    english = true, german = true, deutsch = true, englisch = true, french = true, spanish = true,
+    italian = true, japanese = true, korean = true, turkish = true, russian = true, dutch = true,
+    polish = true, portuguese = true, swedish = true, danish = true, chinese = true, arabic = true,
+}
+
 local function spur_name(spur, nummer)
-    local sprache = spur.lang and SPRACHEN[spur.lang:lower()]
-    local name = sprache or (spur.lang and spur.lang:upper()) or nil
-    if spur.title and spur.title ~= "" and (not name or not spur.title:lower():find((name or ""):lower(), 1, true)) then
-        name = name and (name .. " – " .. spur.title) or spur.title
+    local code = spur.lang and spur.lang:lower() or nil
+    local sprache = code and SPRACHEN[code]
+    local name = sprache or (code and code:upper()) or nil
+    local titel = spur.title and spur.title:gsub("^%s+", ""):gsub("%s+$", "") or ""
+    local klein = titel:lower()
+    local doppelt = klein == "" or klein == code or SPRACH_WOERTER[klein] or (name and klein:find(name:lower(), 1, true))
+    if not doppelt then
+        name = name and (name .. " – " .. titel) or titel
     end
     return name or ("Spur " .. nummer)
 end
@@ -481,7 +515,7 @@ local function spuren_menue(art)
             if spur.selected then auswahl = #items end
         end
     end
-    if #items == 0 or (art == "audio" and nummer < 1) then
+    if nummer == 0 then
         mp.osd_message(art == "audio" and "Keine Tonspur" or "Keine Untertitel", 2)
         return
     end
@@ -489,6 +523,36 @@ local function spuren_menue(art)
                     items = items, selected_index = auswahl }
     menue_oeffnen(menue)
 end
+
+mp.register_script_message("folge", function(index)
+    mp.commandv("playlist-play-index", index)
+    mp.set_property_bool("pause", false)
+end)
+
+local function haupt_menue()
+    local items = { { title = "Von vorn", hint = "Pos1", value = { "seek", "0", "absolute" } } }
+    if ist_serie() then
+        items[#items + 1] = { title = "Folgen & Staffeln", hint = "E", value = { "script-binding", "jarvis/folgen" } }
+        items[#items + 1] = { title = "Nächste Folge", hint = "N", value = { "script-binding", "jarvis/naechste" } }
+        items[#items + 1] = { title = "Vorherige Folge", hint = "P", value = { "script-binding", "jarvis/vorherige" } }
+    end
+    items[#items + 1] = { title = "Tonspur", hint = "A", value = { "script-binding", "jarvis/ton" } }
+    items[#items + 1] = { title = "Untertitel", hint = "U", value = { "script-binding", "jarvis/untertitel" } }
+    items[#items + 1] = { title = "Vollbild", hint = "F", value = { "cycle", "fullscreen" } }
+    items[#items + 1] = { title = "Zurück zum Kino", hint = "Esc", value = { "quit" } }
+    menue_oeffnen({ type = "jarvis-menue", items = items })
+end
+mp.add_key_binding(nil, "menue", haupt_menue)
+
+local tempo_bekannt = false
+mp.observe_property("speed", "number", function(_, tempo)
+    if not tempo_bekannt then tempo_bekannt = true return end
+    if math.abs(tempo - 1) < 0.001 then
+        mp.osd_message("Normales Tempo", 1.2)
+    else
+        mp.osd_message((string.format("Tempo %.2f×", tempo):gsub("0×$", "×"):gsub("%.", ",")), 1.2)
+    end
+end)
 
 mp.add_key_binding(nil, "ton", function() spuren_menue("audio") end)
 mp.add_key_binding(nil, "untertitel", function() spuren_menue("sub") end)

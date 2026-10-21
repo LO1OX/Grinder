@@ -10,7 +10,7 @@ from jarvis_kino.einstellungen import Fortschritt, normalisiere_adresse  # noqa:
 from jarvis_kino.folgen import anzeige_titel, folgen_aus_antworten, folgen_finden, video_id_aus_url  # noqa: E402
 from jarvis_kino.meldung import anfrage_bauen, gueltige_vorlage  # noqa: E402
 from jarvis_kino.netz import basis_tauschen, ist_jarvis  # noqa: E402
-from jarvis_kino.player import mpv_argumente  # noqa: E402
+from jarvis_kino.player import fehler_einordnen, mpv_argumente  # noqa: E402
 
 
 class FolgenTest(unittest.TestCase):
@@ -117,6 +117,10 @@ class NetzTest(unittest.TestCase):
         self.assertEqual(normalisiere_adresse("jarvis:8080"), "http://jarvis:8080/kino/")
         self.assertEqual(normalisiere_adresse("[fd00::5]"), "http://[fd00::5]/kino/")
         self.assertEqual(normalisiere_adresse("ftp://x.de"), "")
+        self.assertEqual(normalisiere_adresse("https://abc.trycloudflare.com/anmelden.html"),
+                         "https://abc.trycloudflare.com/kino/")
+        self.assertEqual(normalisiere_adresse("jarvis.fritz.box"), "http://jarvis.fritz.box/kino/")
+        self.assertEqual(normalisiere_adresse("2a02:8070::1"), "http://[2a02:8070::1]/kino/")
 
 
 class PlayerTest(unittest.TestCase):
@@ -128,6 +132,18 @@ class PlayerTest(unittest.TestCase):
         self.assertIn("--alang=en,eng,de,deu,ger", args)
         self.assertIn("--slang=de,deu,ger", args)
         self.assertIn("--http-header-fields-append=Cookie: sitzung=abc", args)
+
+
+class FehlerTest(unittest.TestCase):
+    def test_einordnen(self):
+        rauschen = "[   0.1][e][vaapi] libva: vaGetDriverNames() failed"
+        self.assertEqual(fehler_einordnen([rauschen, "[ 0.2][e][stream] HTTP error 401 Unauthorized"])["art"], "anmeldung")
+        self.assertEqual(fehler_einordnen(["[ 0.2][e][ffmpeg] http: HTTP error 404 Not Found"])["art"], "fehlt")
+        self.assertEqual(fehler_einordnen(["[ 0.2][e][ffmpeg] tcp: Connection refused"])["art"], "netz")
+        self.assertEqual(fehler_einordnen(["[ 0.2][e][vd] Could not open codec."])["art"], "bild")
+        unbekannt = fehler_einordnen([rauschen])
+        self.assertEqual(unbekannt["art"], "unbekannt")
+        self.assertEqual(unbekannt["details"], "")
 
 
 class FortschrittTest(unittest.TestCase):

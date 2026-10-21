@@ -2,7 +2,6 @@
 import threading
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
                              QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                              QPushButton, QVBoxLayout)
@@ -80,12 +79,18 @@ class EinstellungenDialog(QDialog):
         knoepfe.button(QDialogButtonBox.StandardButton.Cancel).setText("Abbrechen")
         knoepfe.accepted.connect(self.accept)
         knoepfe.rejected.connect(self.reject)
-        for knopf in knoepfe.buttons():
-            knopf.setIcon(QIcon())  # ohne Disketten-/X-Symbole, wie GNOME-Dialoge
+        for knopf in self.findChildren(QPushButton):
+            knopf.setAutoDefault(False)  # Enter im Adressfeld fügt hinzu, statt zu speichern
         layout.addWidget(knoepfe)
 
         self._melder = _Melder()
         self._melder.fertig.connect(self._hw_fertig)
+
+    def keyPressEvent(self, ereignis):
+        if ereignis.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self.neu.hasFocus():
+            self._hinzu()
+            return
+        super().keyPressEvent(ereignis)
 
     @staticmethod
     def _auswahl(optionen, wert):

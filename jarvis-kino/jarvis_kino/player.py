@@ -4,7 +4,6 @@ import os
 import shlex
 import shutil
 import tempfile
-import time
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QProcess, QTimer, pyqtSignal
@@ -25,7 +24,8 @@ UNTERTITEL = {
 }
 
 
-def mpv_argumente(einst, sock, logdatei, daten_pfad, playlist_pfad, start_index, cookie, referer, user_agent):
+def mpv_argumente(einst, sock, logdatei, daten_pfad, playlist_pfad, start_index, cookie, referer, user_agent,
+                  bilder_ordner=None):
     """Baut die Kommandozeile für mpv (eigene Konfiguration, ändert nichts am System-mpv)."""
     args = [
         f"--config-dir={MPV_ORDNER}",
@@ -56,9 +56,35 @@ def mpv_argumente(einst, sock, logdatei, daten_pfad, playlist_pfad, start_index,
         args.append(f"--referrer={referer}")
     if user_agent:
         args.append(f"--user-agent={user_agent}")
+    if bilder_ordner:
+        args.append(f"--screenshot-directory={bilder_ordner}")
     # Für Fehlersuche, z. B. JARVIS_KINO_MPV_ARGS="--hwdec=no --msg-level=all=debug"
     args += shlex.split(os.environ.get("JARVIS_KINO_MPV_ARGS", ""))
     return args
+
+
+# Meldungen, die auf jedem Rechner ohne passende Grafik vorkommen und nichts bedeuten
+RAUSCHEN = ("libcuda", "CUDA", "libva", "vaGetDriverNames", "drm", "VT control", "vdpau", "Xvideo", "TTY")
+
+
+def fehler_einordnen(zeilen):
+    """Wertet das mpv-Protokoll aus: {art, text, details} mit verständlicher Ursache."""
+    wichtig = [z for z in zeilen if ("[e]" in z or "[w]" in z) and not any(r in z for r in RAUSCHEN)]
+    details = "\n".join(wichtig[-8:])
+    alles = "\n".join(wichtig)
+    if any(c in alles for c in ("401", "403", "Unauthorized", "Forbidden")):
+        return {"art": "anmeldung", "details": details,
+                "text": "Jarvis hat das Video abgelehnt. Bitte im Kino einmal neu anmelden."}
+    if "404" in alles or "Not Found" in alles:
+        return {"art": "fehlt", "details": details, "text": "Dieses Video gibt es auf Jarvis nicht (mehr)."}
+    if any(w in alles for w in ("Connection refused", "timed out", "Network", "network", "Failed to open",
+                                "resolve", "Connection reset")):
+        return {"art": "netz", "details": details,
+                "text": "Keine Verbindung zum Video. Ist Jarvis erreichbar?"}
+    if any(w in alles for w in ("[vd]", "[vo", "hwdec", "decoder", "Decoder", "[ffmpeg/video]")):
+        return {"art": "bild", "details": details,
+                "text": "Das Bild ließ sich nicht darstellen – vermutlich ein Problem mit der Grafikbeschleunigung."}
+    return {"art": "unbekannt", "details": details, "text": "Das Video konnte nicht abgespielt werden."}
 
 
 class PlayerSitzung(QObject):
@@ -89,7 +115,6 @@ class PlayerSitzung(QObject):
         self.letzte_positionen = {}   # id -> (pos, dauer)
         self.spielende_id = None
         self.bereit = False
-        self.gestartet_um = 0.0
         self.hatte_position = False
 
     @property
@@ -100,7 +125,7 @@ class PlayerSitzung(QObject):
     def verfuegbar():
         return shutil.which("mpv") is not None
 
-    def starten(self, einst, urls, start_index, daten, cookie, referer, user_agent):
+    def starten(self, einst, urls, start_index, daten, cookie, referer, user_agent, bilder_ordner=None):
         """urls: Liste der Video-Adressen (Folgen), daten: Infos für jarvis.lua."""
         if self.laeuft:
             self.befehl("quit")
@@ -121,13 +146,12 @@ class PlayerSitzung(QObject):
             pass
         DATEN.mkdir(parents=True, exist_ok=True)
         args = mpv_argumente(einst, self.sock_pfad, self.log_pfad, daten_pfad, playlist,
-                             start_index, cookie, referer, user_agent)
+                             start_index, cookie, referer, user_agent, bilder_ordner)
         self.prozess = QProcess(self)
         self.prozess.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.prozess.readyReadStandardOutput.connect(lambda: self.prozess.readAllStandardOutput())
         self.prozess.finished.connect(self._prozess_ende)
         self.prozess.errorOccurred.connect(self._prozess_fehler)
-        self.gestartet_um = time.monotonic()
         self.prozess.start("mpv", args)
         self.verbinden_uhr.start()
 
@@ -217,7 +241,8 @@ class PlayerSitzung(QObject):
     def _prozess_fehler(self, fehler):
         if fehler == QProcess.ProcessError.FailedToStart:
             self.verbinden_uhr.stop()
-            self.beendet.emit({"fehler": "mpv konnte nicht gestartet werden. Ist mpv installiert?",
+            self.beendet.emit({"fehler": {"art": "mpv", "details": "",
+                                          "text": "Der Player (mpv) ließ sich nicht starten. Bitte die Installation wiederholen."},
                                "neustart": False, "positionen": {}, "id": None, "pos": 0, "code": -1})
 
     # Exit-Codes von jarvis.lua: 4 = Verbindung weg (andere Adresse suchen),
@@ -232,7 +257,6 @@ class PlayerSitzung(QObject):
             self.sock.abort()
             self.sock.deleteLater()
             self.sock = None
-        laufzeit = time.monotonic() - self.gestartet_um
         absturz = status == QProcess.ExitStatus.CrashExit or code not in (0, self.NETZ_WEG, self.LADEFEHLER)
         neustart = (code == self.NETZ_WEG or absturz) and self.hatte_position
         info = {
@@ -244,19 +268,15 @@ class PlayerSitzung(QObject):
             "fehler": None,
         }
         if not neustart and (code in (self.NETZ_WEG, self.LADEFEHLER) or absturz):
-            info["fehler"] = self._fehlertext(laufzeit)
+            info["fehler"] = self._fehlertext()
         self.beendet.emit(info)
 
-    def _fehlertext(self, laufzeit):
+    def _fehlertext(self):
         try:
             zeilen = self.log_pfad.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             zeilen = []
-        wichtig = [z for z in zeilen if any(w in z for w in ("[e]", "error", "Error", "HTTP", "Failed", "failed"))]
-        text = "\n".join(wichtig[-8:]) or "\n".join(zeilen[-8:])
-        if "401" in text or "403" in text:
-            return "Der Server hat das Video abgelehnt (nicht angemeldet?).\n\n" + text
-        return f"Das Video ließ sich nicht starten (nach {laufzeit:.0f} s).\n\n{text}"
+        return fehler_einordnen(zeilen)
 
     def beenden(self):
         if self.laeuft:

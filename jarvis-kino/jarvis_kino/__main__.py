@@ -58,6 +58,19 @@ def _plattform_waehlen():
         os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 
+def _ohne_knopfsymbole(app):
+    """Dialogknöpfe ohne Symbole (keine Diskette, kein rotes X) – wie in GNOME-Dialogen."""
+    from PyQt6.QtWidgets import QProxyStyle, QStyle
+
+    class OhneSymbole(QProxyStyle):
+        def styleHint(self, hinweis, option=None, widget=None, rueckgabe=None):
+            if hinweis == QStyle.StyleHint.SH_DialogButtonBox_ButtonsHaveIcons:
+                return 0
+            return super().styleHint(hinweis, option, widget, rueckgabe)
+
+    app.setStyle(OhneSymbole(app.style().name()))
+
+
 def _deutsch(app):
     """Qt-eigene Texte (Kontextmenüs, Dialogknöpfe) auf Deutsch."""
     from PyQt6.QtCore import QLibraryInfo, QLocale, QTranslator
@@ -94,11 +107,12 @@ def main():
     from .dialog import EinstellungenDialog
     from .hauptfenster import Hauptfenster
 
-    app = QApplication([sys.argv[0]] + qt_args)
+    app = QApplication(["jarvis-kino"] + qt_args)  # Programmname = Fensterklasse für GNOME
     app.setApplicationName("Jarvis Kino")
     app.setOrganizationName("Jarvis")
     app.setDesktopFileName("jarvis-kino")
     _deutsch(app)
+    _ohne_knopfsymbole(app)
 
     # Nur ein Fenster: ein zweiter Start holt das vorhandene nach vorn.
     name = f"jarvis-kino-{os.getuid()}"

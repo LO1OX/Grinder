@@ -45,7 +45,8 @@ def _atomar_schreiben(pfad, daten):
 
 def _lokaler_host(host):
     host = host.strip("[]").lower()
-    if host == "localhost" or host.endswith(".local") or "." not in host:
+    lokale_endungen = (".local", ".fritz.box", ".lan", ".home", ".home.arpa", ".internal", ".localdomain")
+    if host == "localhost" or host.endswith(lokale_endungen) or "." not in host:
         return True
     try:
         ipaddress.ip_address(host)
@@ -60,6 +61,8 @@ def normalisiere_adresse(text):
     text = (text or "").strip()
     if not text:
         return ""
+    if "://" not in text and text.count(":") > 1 and not text.startswith("["):
+        text = f"[{text}]"  # nackte IPv6-Adresse
     if "://" not in text:
         host = re.match(r"\[[^\]]*\]|[^/:?#]*", text).group(0)
         text = ("http://" if _lokaler_host(host) else "https://") + text
@@ -67,7 +70,7 @@ def normalisiere_adresse(text):
     if not teile.netloc or teile.scheme.lower() not in ("http", "https"):
         return ""
     treffer = re.search(r"/kino(?=/|$)", teile.path)
-    pfad = teile.path[:treffer.end()] if treffer else teile.path.rstrip("/") + "/kino"
+    pfad = teile.path[:treffer.end()] if treffer else "/kino"  # fremde Pfade (z. B. /anmelden) verwerfen
     return f"{teile.scheme.lower()}://{teile.netloc.lower()}{pfad}/"
 
 
