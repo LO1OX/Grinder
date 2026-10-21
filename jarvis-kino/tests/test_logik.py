@@ -109,6 +109,14 @@ class NetzTest(unittest.TestCase):
         self.assertEqual(normalisiere_adresse("jarvis.local"), "http://jarvis.local/kino/")
         self.assertEqual(normalisiere_adresse("https://x.myfritz.net/kino"), "https://x.myfritz.net/kino/")
         self.assertEqual(normalisiere_adresse("http://[2a02:8070::1]:8080/"), "http://[2a02:8070::1]:8080/kino/")
+        self.assertEqual(normalisiere_adresse("abc-def.trycloudflare.com/kino/#/serie/5"),
+                         "https://abc-def.trycloudflare.com/kino/")
+        self.assertEqual(normalisiere_adresse("HTTPS://ABC.trycloudflare.com/kino/api/kino/start?x=1"),
+                         "https://abc.trycloudflare.com/kino/")
+        self.assertEqual(normalisiere_adresse("192.168.178.69"), "http://192.168.178.69/kino/")
+        self.assertEqual(normalisiere_adresse("jarvis:8080"), "http://jarvis:8080/kino/")
+        self.assertEqual(normalisiere_adresse("[fd00::5]"), "http://[fd00::5]/kino/")
+        self.assertEqual(normalisiere_adresse("ftp://x.de"), "")
 
 
 class PlayerTest(unittest.TestCase):

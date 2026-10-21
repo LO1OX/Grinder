@@ -110,7 +110,11 @@ class PlayerSitzung(QObject):
         daten_pfad = self.ordner / "daten.json"
         daten_pfad.write_text(json.dumps(daten, ensure_ascii=False), encoding="utf-8")
         playlist = self.ordner / "folgen.m3u"
-        playlist.write_text("#EXTM3U\n" + "".join(f"{u}\n" for u in urls), encoding="utf-8")
+        # Mit Titeln, damit Player-Listen nie rohe Server-Adressen zeigen
+        titel = [str(f.get("anzeige") or "").replace("\n", " ") for f in daten.get("folgen", [])]
+        titel += [""] * (len(urls) - len(titel))
+        playlist.write_text("#EXTM3U\n" + "".join(f"#EXTINF:-1,{t}\n{u}\n" for u, t in zip(urls, titel)),
+                            encoding="utf-8")
         try:
             os.unlink(self.sock_pfad)
         except FileNotFoundError:
@@ -161,6 +165,8 @@ class PlayerSitzung(QObject):
         self.befehl("seek", float(pos), "absolute")
 
     def _lesen(self):
+        if self.sock is None:
+            return
         self.puffer += bytes(self.sock.readAll())
         *zeilen, self.puffer = self.puffer.split(b"\n")
         for zeile in zeilen:
@@ -222,7 +228,9 @@ class PlayerSitzung(QObject):
     def _prozess_ende(self, code, status):
         self.verbinden_uhr.stop()
         if self.sock:
+            self.sock.readyRead.disconnect()
             self.sock.abort()
+            self.sock.deleteLater()
             self.sock = None
         laufzeit = time.monotonic() - self.gestartet_um
         absturz = status == QProcess.ExitStatus.CrashExit or code not in (0, self.NETZ_WEG, self.LADEFEHLER)

@@ -2,6 +2,7 @@
 import threading
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout,
                              QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                              QPushButton, QVBoxLayout)
@@ -79,6 +80,8 @@ class EinstellungenDialog(QDialog):
         knoepfe.button(QDialogButtonBox.StandardButton.Cancel).setText("Abbrechen")
         knoepfe.accepted.connect(self.accept)
         knoepfe.rejected.connect(self.reject)
+        for knopf in knoepfe.buttons():
+            knopf.setIcon(QIcon())  # ohne Disketten-/X-Symbole, wie GNOME-Dialoge
         layout.addWidget(knoepfe)
 
         self._melder = _Melder()
@@ -123,7 +126,7 @@ class EinstellungenDialog(QDialog):
     def _hw_fertig(self, text):
         self.ausgabe.setPlainText(text)
         self.hw_knopf.setEnabled(True)
-        self.hw_knopf.setText("Hardware testen")
+        self.hw_knopf.setText("Testen")
 
     def werte(self):
         self.einst.update({

@@ -4,7 +4,9 @@ import faulthandler
 import logging
 import logging.handlers
 import os
+import shutil
 import signal
+import subprocess
 import sys
 
 from . import __version__
@@ -26,15 +28,45 @@ def _logging():
     sys.excepthook = unerwartet
 
 
+def _bruchteil_skalierung():
+    """True, wenn GNOME Bruchteil-Skalierung (z. B. 125 %) erlaubt – XWayland-Fenster würden dann unscharf."""
+    if not shutil.which("gsettings"):
+        return False
+    try:
+        aus = subprocess.run(["gsettings", "get", "org.gnome.mutter", "experimental-features"], capture_output=True,
+                             text=True, timeout=2, stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "scale-monitor-framebuffer" in aus
+
+
 def _plattform_waehlen():
-    """Unter GNOME mit Wayland hat Qt nur einfache eigene Fensterrahmen. Über XWayland
-    zeichnet GNOME den gewohnten Rahmen selbst (Titelleiste, Vollbild ohne Rand)."""
-    if os.environ.get("QT_QPA_PLATFORM") or os.environ.get("JARVIS_KINO_WAYLAND") == "1":
+    """Fensterrahmen wie im System. Unter GNOME mit Wayland zeichnet GNOME über XWayland den
+    gewohnten Rahmen selbst (Vollbild ohne Rand). Bei Bruchteil-Skalierung bleibt die App bei
+    Wayland (scharf) und nutzt Qts GNOME-Rahmen („adwaita“).
+    JARVIS_KINO_WAYLAND=1 erzwingt Wayland, =0 erzwingt XWayland."""
+    wahl = os.environ.get("JARVIS_KINO_WAYLAND")
+    if os.environ.get("QT_QPA_PLATFORM") or not os.environ.get("WAYLAND_DISPLAY"):
         return
     desktop = (os.environ.get("XDG_CURRENT_DESKTOP", "") + ":" + os.environ.get("XDG_SESSION_DESKTOP", "")).lower()
-    if os.environ.get("WAYLAND_DISPLAY") and os.environ.get("DISPLAY") and any(
-            d in desktop for d in ("gnome", "ubuntu", "unity", "pantheon", "budgie", "cinnamon")):
+    gnome_artig = any(d in desktop for d in ("gnome", "ubuntu", "unity", "pantheon", "budgie", "cinnamon"))
+    if wahl == "1" or (wahl != "0" and gnome_artig and _bruchteil_skalierung()) or not os.environ.get("DISPLAY"):
+        if gnome_artig:
+            os.environ.setdefault("QT_WAYLAND_DECORATION", "adwaita")
+        return
+    if wahl == "0" or gnome_artig:
         os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+
+def _deutsch(app):
+    """Qt-eigene Texte (Kontextmenüs, Dialogknöpfe) auf Deutsch."""
+    from PyQt6.QtCore import QLibraryInfo, QLocale, QTranslator
+
+    pfad = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    for name in ("qtbase", "qtwebengine"):
+        uebersetzer = QTranslator(app)
+        if uebersetzer.load(QLocale("de_DE"), name, "_", pfad):
+            app.installTranslator(uebersetzer)
 
 
 def main():
@@ -66,13 +98,14 @@ def main():
     app.setApplicationName("Jarvis Kino")
     app.setOrganizationName("Jarvis")
     app.setDesktopFileName("jarvis-kino")
+    _deutsch(app)
 
     # Nur ein Fenster: ein zweiter Start holt das vorhandene nach vorn.
     name = f"jarvis-kino-{os.getuid()}"
     probe = QLocalSocket()
     probe.connectToServer(name)
     if probe.waitForConnected(300):
-        probe.write(b"zeigen")
+        probe.write(b"einstellungen" if args.einstellungen else b"zeigen")
         probe.flush()
         probe.waitForBytesWritten(300)
         return 0
@@ -91,12 +124,17 @@ def main():
 
     def nach_vorn():
         verbindung = server.nextPendingConnection()
+        wunsch = b""
         if verbindung:
+            if verbindung.waitForReadyRead(300):
+                wunsch = bytes(verbindung.readAll())
             verbindung.close()
         if fenster.isMinimized():
             fenster.showNormal()
         fenster.activateWindow()
         fenster.raise_()
+        if wunsch == b"einstellungen":
+            QTimer.singleShot(0, fenster.einstellungen_zeigen)
 
     server.newConnection.connect(nach_vorn)
     signal.signal(signal.SIGINT, lambda *_: app.quit())

@@ -25,6 +25,7 @@ def ist_jarvis(status, ort, inhalt):
 class AdressSucher(QObject):
     gefunden = pyqtSignal(str)
     nichts_gefunden = pyqtSignal()
+    NACHFRIST_MS = 1500
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +67,10 @@ class AdressSucher(QObject):
         inhalt = bytes(antwort.readAll())[:256 * 1024]
         self._ergebnis[adresse] = ist_jarvis(status, ort, inhalt)
         antwort.deleteLater()
+        if self._ergebnis[adresse] and self._uhr.remainingTime() > self.NACHFRIST_MS:
+            # Eine Adresse antwortet: auf bevorzugte (z. B. Heimnetz) nur noch kurz warten,
+            # damit eine hängende Adresse unterwegs den Start nicht ausbremst.
+            self._uhr.start(self.NACHFRIST_MS)
         self._auswerten(endgueltig=False)
 
     def _auswerten(self, endgueltig):
@@ -82,7 +87,12 @@ class AdressSucher(QObject):
         if self._laeuft:
             self._auswerten(endgueltig=True)
 
-    def _ende(self, adresse):
+    def abbrechen(self):
+        """Laufende Suche ohne Ergebnis-Signal beenden."""
+        if self._laeuft:
+            self._aufraeumen()
+
+    def _aufraeumen(self):
         self._laeuft = False
         self._uhr.stop()
         for antwort in self._antworten:
@@ -92,6 +102,9 @@ class AdressSucher(QObject):
             except RuntimeError:
                 pass
         self._antworten = []
+
+    def _ende(self, adresse):
+        self._aufraeumen()
         if adresse:
             self.gefunden.emit(adresse)
         else:

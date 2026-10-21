@@ -190,7 +190,8 @@ local function knopf_lage()
     if not w or w <= 0 or h <= 0 then w, h = 1280, 720 end
     knopf.fs = math.max(18, h * 0.03)
     knopf.h = knopf.fs * 2.2
-    knopf.w = (#knopf.text * 0.55 + 2.6) * knopf.fs
+    local zeichen = select(2, knopf.text:gsub("[^\128-\191]", ""))
+    knopf.w = (zeichen * 0.52 + 2.4) * knopf.fs
     knopf.x = w - knopf.w - w * 0.04
     knopf.y = h * 0.74
 end
@@ -234,17 +235,16 @@ local function zeichnen()
 
     if pause_seit and mp.get_time() - pause_seit > 5 and aktuelle_id then
         local f = folgen_nach_id[aktuelle_id]
-        local gross = h * 0.055
-        local klein = h * 0.026
-        local x, y = w * 0.06, h * 0.36
-        teile[#teile + 1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H60&\\p1}m 0 0 l %d 0 %d %d 0 %d{\\p0}", w, w, h, h)
-        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad0\\1c&HB3B3B3&}Du siehst gerade", x, y, klein)
+        local gross = h * 0.04
+        local klein = h * 0.024
+        local x, y = w * 0.06, h * 0.40
+        teile[#teile + 1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H161414&\\1a&HA0&\\p1}m 0 0 l %d 0 %d %d 0 %d{\\p0}", w, w, h, h)
         local titel = daten.serie or (f and f.titel) or mp.get_property("media-title", "")
-        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\b1\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6, gross, ass_text(titel))
+        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\b1\\fs%d\\bord0\\shad0\\1c&HEAE5E5&}%s", x, y, gross, ass_text(titel))
         if f and ist_serie() then
-            local zeile = (f.staffel and ("Staffel " .. f.staffel .. ", ") or "") .. "Folge " .. tostring(f.folge or f.index)
-            if f.titel and f.titel ~= "" and f.titel ~= titel then zeile = zeile .. ": " .. f.titel end
-            teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6 + gross * 1.3, klein * 1.15, ass_text(zeile))
+            local zeile = (f.staffel and ("Staffel " .. f.staffel .. " · ") or "") .. "Folge " .. tostring(f.folge or f.index)
+            if f.titel and f.titel ~= "" and f.titel ~= titel then zeile = zeile .. " · " .. f.titel end
+            teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad0\\1c&HB2ABAB&}%s", x, y + gross * 1.35, klein, ass_text(zeile))
         end
     end
 
@@ -286,8 +286,8 @@ local function intro_bereich(t)
         return { text = "Intro überspringen", ziel = bis }
     end
     -- Ohne Kapitel nur schätzen, wenn die Folge von vorn läuft (nicht beim Fortsetzen).
-    if daten.intro_schaetzen and ist_serie() and #kapitel == 0 and not fortsetzen_bei and t >= 15 and t < 150 then
-        return { text = "Intro überspringen  +85 s", ziel = t + 85 }
+    if daten.intro_schaetzen and ist_serie() and #kapitel == 0 and not fortsetzen_bei and t >= 15 and t < 45 then
+        return { text = "Intro überspringen", ziel = 100 }
     end
 end
 
@@ -391,11 +391,11 @@ local function folgen_menue()
                 unter[#unter + 1] = eintrag(f)
                 if f.id == aktuelle_id then enthaelt = true; unter.auswahl = j end
             end
-            local id = "staffel-" .. tostring(s)
+            -- uosc 4.7 findet Untermenüs über ihren Titel
+            local id = s == 0 and "Weitere Folgen" or ("Staffel " .. tostring(s))
             items[#items + 1] = {
-                id = id,
-                title = s == 0 and "Weitere Folgen" or ("Staffel " .. tostring(s)),
-                hint = #unter .. " Folgen",
+                title = id,
+                hint = #unter == 1 and "1 Folge" or (#unter .. " Folgen"),
                 items = unter,
                 selected_index = unter.auswahl,
                 active = enthaelt,
@@ -423,6 +423,65 @@ local function folgen_menue()
     end
 end
 
+-- ------------------------------------------------- Tonspur & Untertitel (deutsch)
+local SPRACHEN = {
+    de = "Deutsch", ger = "Deutsch", deu = "Deutsch", en = "Englisch", eng = "Englisch",
+    fr = "Französisch", fre = "Französisch", fra = "Französisch", es = "Spanisch", spa = "Spanisch",
+    it = "Italienisch", ita = "Italienisch", ja = "Japanisch", jpn = "Japanisch", ko = "Koreanisch",
+    kor = "Koreanisch", tr = "Türkisch", tur = "Türkisch", ru = "Russisch", rus = "Russisch",
+    nl = "Niederländisch", dut = "Niederländisch", nld = "Niederländisch", pl = "Polnisch", pol = "Polnisch",
+    pt = "Portugiesisch", por = "Portugiesisch", sv = "Schwedisch", swe = "Schwedisch", da = "Dänisch",
+    dan = "Dänisch", zh = "Chinesisch", chi = "Chinesisch", zho = "Chinesisch", ar = "Arabisch", ara = "Arabisch",
+}
+
+local function spur_name(spur, nummer)
+    local sprache = spur.lang and SPRACHEN[spur.lang:lower()]
+    local name = sprache or (spur.lang and spur.lang:upper()) or nil
+    if spur.title and spur.title ~= "" and (not name or not spur.title:lower():find((name or ""):lower(), 1, true)) then
+        name = name and (name .. " – " .. spur.title) or spur.title
+    end
+    return name or ("Spur " .. nummer)
+end
+
+local function spuren_menue(art)
+    local items, nummer, auswahl = {}, 0, 1
+    if art == "sub" then
+        local an = false
+        for _, spur in ipairs(mp.get_property_native("track-list") or {}) do
+            if spur.type == "sub" and spur.selected then an = true end
+        end
+        items[1] = { title = "Aus", value = { "set", "sid", "no" }, active = not an }
+    end
+    for _, spur in ipairs(mp.get_property_native("track-list") or {}) do
+        if spur.type == art then
+            nummer = nummer + 1
+            local hinweis
+            if art == "audio" then
+                local kanaele = spur["demux-channel-count"]
+                hinweis = kanaele and (kanaele >= 6 and "5.1" or (kanaele == 2 and "Stereo" or nil)) or nil
+            elseif spur.forced then
+                hinweis = "nur Fremdsprache"
+            end
+            items[#items + 1] = {
+                title = spur_name(spur, nummer),
+                hint = hinweis,
+                value = { "set", art == "audio" and "aid" or "sid", tostring(spur.id) },
+                active = spur.selected,
+            }
+            if spur.selected then auswahl = #items end
+        end
+    end
+    if #items == 0 or (art == "audio" and nummer < 1) then
+        mp.osd_message(art == "audio" and "Keine Tonspur" or "Keine Untertitel", 2)
+        return
+    end
+    local menue = { type = "jarvis-" .. art, title = art == "audio" and "Tonspur" or "Untertitel",
+                    items = items, selected_index = auswahl }
+    mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menue))
+end
+
+mp.add_key_binding(nil, "ton", function() spuren_menue("audio") end)
+mp.add_key_binding(nil, "untertitel", function() spuren_menue("sub") end)
 mp.add_key_binding(nil, "folgen", folgen_menue)
 mp.add_key_binding(nil, "naechste", function()
     if hat_naechste() then weiter_zur_naechsten() else mp.osd_message("Das war die letzte Folge", 2) end

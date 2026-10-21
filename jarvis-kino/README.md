@@ -27,13 +27,12 @@ Einmal das Passwort deines Laptops eingeben, wenn danach gefragt wird. Fertig, w
 
 ## Erster Start
 
-1. Im App-Menü **Jarvis Kino** öffnen.
-2. Es erscheinen die Einstellungen mit den Jarvis-Adressen → **Alle prüfen** → **Speichern**.
-3. Einmal bei Jarvis anmelden – fertig.
+1. Im App-Menü **Jarvis Kino** öffnen – kurz dreht sich ein Ladekreisel, die App sucht Jarvis selbst.
+2. Einmal bei Jarvis anmelden – fertig.
 
-Unterwegs geht es über die Cloudflare-Adresse. **Wichtig:** Diese Adresse ändert sich, wenn der
-Tunnel neu startet. Dann die neue Adresse mit **Strg + ,** (Einstellungen) eintragen. Pro Adresse
-musst du dich einmal anmelden.
+Findet die App Jarvis nicht (z. B. unterwegs mit neuer Cloudflare-Adresse), erscheint **„Erneut suchen“**
+und darunter **„Adresse eingeben“**. Dort die neue Adresse einfügen → **Verbinden**. Die Cloudflare-Adresse
+ändert sich bei jedem Tunnel-Neustart; die alte wird dann automatisch ersetzt. Pro Adresse einmal anmelden.
 
 ## Bedienung im Player
 
@@ -46,17 +45,21 @@ musst du dich einmal anmelden.
 | N / P | nächste / vorherige Folge |
 | S | Intro überspringen |
 | Enter | Knopf auf dem Bild auslösen (z. B. „Nächste Folge“) |
-| A / U | Tonspur / Untertitel |
+| A / U | Tonspur / Untertitel (Menü) |
 | [ / ] | langsamer / schneller |
 | Pos1 | von vorn |
 | F, Doppelklick | Vollbild |
 | Esc | zurück ins Kino (Fortschritt wird gespeichert) |
 
 In der App: **F11** Vollbild, **F5** neu laden, **Strg + ,** Einstellungen, Rechtsklick für alle Funktionen.
+Im Player öffnet ein Rechtsklick ein kleines Menü (Folgen, Tonspur, Untertitel, Vollbild, Zurück).
 
 ## Wenn etwas nicht klappt
 
-- **Ruckeln/Bildfehler:** Einstellungen → Hardware-Beschleunigung → „Hardware testen“; ggf.
+- **Fensterrahmen/Schärfe:** Unter Ubuntu mit Wayland nutzt die App den GNOME-Rahmen über XWayland; ist
+  Bruchteil-Skalierung (z. B. 125 %) aktiv, bleibt sie bei Wayland, damit nichts unscharf wird. Erzwingen:
+  `JARVIS_KINO_WAYLAND=1 jarvis-kino` (Wayland) bzw. `=0` (XWayland).
+- **Ruckeln/Bildfehler:** Einstellungen → Hardware-Beschleunigung → „Testen“; ggf.
   „Automatisch, kompatibel“ wählen.
 - **NVIDIA-Grafikkarte:** Ohne NVIDIA-Treiber übernimmt der Prozessor. Treiber: `sudo ubuntu-drivers install`, danach neu starten.
 - **Protokolle:** `~/.local/share/jarvis-kino/jarvis-kino.log` und `mpv.log`

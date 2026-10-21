@@ -15,7 +15,8 @@ main() {
     # uosc 4.7: läuft mit Ubuntus mpv (0.34–0.37, Lua 5.2); 5.x zeigt dort keine Menüs.
     UOSC_VERSION="4.7.0"
     UOSC_SHA256="086772527e0b3afdd45e93877016e5ec0119ce93e860888aad9aa67660991aa1"
-    PYQT="PyQt6==6.7.1 PyQt6-Qt6==6.7.3 PyQt6-WebEngine==6.7.0 PyQt6-WebEngine-Qt6==6.7.3"
+    # Qt 6.9: bringt GNOME-artige Fensterrahmen für Wayland mit („adwaita“)
+    PYQT="PyQt6==6.9.1 PyQt6-Qt6==6.9.2 PyQt6-WebEngine==6.9.0 PyQt6-WebEngine-Qt6==6.9.2"
 
     DATEN="${XDG_DATA_HOME:-$HOME/.local/share}/jarvis-kino"
     APP="$DATEN/app"
@@ -58,7 +59,7 @@ main() {
             libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0 libxcb-shape0
             libxcb-xinerama0 libxcb-xkb1 libxcb-randr0 libxkbcommon-x11-0 libxkbcommon0 libnss3 libegl1 libgl1
             libopengl0 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxkbfile1 libxshmfence1 libdbus-1-3
-            libfontconfig1 libasound2t64 fonts-noto-core libnss-mdns avahi-daemon)
+            libfontconfig1 libasound2t64 fonts-noto-core libnss-mdns avahi-daemon x11-utils libdbus-1-3)
     sudo apt-get update -qq || gelb "apt-get update meldete Fehler – versuche trotzdem weiter."
     # Paketnamen, die es nicht überall gibt (z. B. libasound2t64 erst ab 24.04)
     VERFUEGBAR=()
@@ -142,6 +143,10 @@ main() {
     UOSC_PUFFER="$APP.neu/mpv/scripts/uosc_shared/elements/BufferingIndicator.lua"
     sed -i 's/^\telseif player and cache and state.uncached_ranges then self.enabled = true end$/\tend/' "$UOSC_PUFFER"
     grep -q 'uncached_ranges then self.enabled = true' "$UOSC_PUFFER" && { rot "uosc-Anpassung (Ladekreisel) fehlgeschlagen."; exit 1; }
+    # Kein „2/3“-Kästchen neben dem Titel – die Folge steht schon im Titel.
+    UOSC_TITEL="$APP.neu/mpv/scripts/uosc_shared/elements/TopBar.lua"
+    sed -i 's/^\t\tif state.has_playlist then$/\t\tif false then/' "$UOSC_TITEL"
+    grep -q 'if false then' "$UOSC_TITEL" || { rot "uosc-Anpassung (Titelleiste) fehlgeschlagen."; exit 1; }
 
     rm -rf "$APP.alt"
     [ -d "$APP" ] && mv "$APP" "$APP.alt"
@@ -149,13 +154,16 @@ main() {
     rm -rf "$APP.alt"
 
     schritt "Python-Umgebung mit Qt einrichten (einmalig ca. 200 MB)"
-    if [ ! -x "$VENV/bin/python" ] || ! "$VENV/bin/python" -c 'import sys' 2>/dev/null; then
+    # Andere Qt-Version als beim letzten Mal: Umgebung neu anlegen, damit keine alten Qt-Reste stören.
+    if [ ! -x "$VENV/bin/python" ] || ! "$VENV/bin/python" -c 'import sys' 2>/dev/null \
+            || [ "$(cat "$VENV/.jarvis-qt" 2>/dev/null)" != "$PYQT" ]; then
         rm -rf "$VENV"
         python3 -m venv "$VENV"
     fi
     "$VENV/bin/python" -m pip install -q --upgrade pip
     # shellcheck disable=SC2086
     "$VENV/bin/python" -m pip install -q $PYQT
+    echo "$PYQT" > "$VENV/.jarvis-qt"
     "$VENV/bin/python" -c "from PyQt6 import QtWebEngineWidgets" || { rot "Qt WebEngine lässt sich nicht laden."; exit 1; }
 
     schritt "Startmenü-Eintrag anlegen"
@@ -202,7 +210,7 @@ EOF
     echo
     gruen "✔ Jarvis Kino ist installiert!"
     echo "  Starten: im App-Menü „Jarvis Kino“ anklicken (oder im Terminal: jarvis-kino)"
-    echo "  Beim ersten Start kannst du die Jarvis-Adressen prüfen, danach einmal anmelden."
+    echo "  Die App sucht Jarvis beim Start selbst – danach einmal anmelden."
     case ":$PATH:" in *":$BIN:"*) ;; *) gelb "  Hinweis: $BIN ist nicht im PATH – das App-Menü funktioniert trotzdem.";; esac
 }
 

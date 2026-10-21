@@ -1,7 +1,10 @@
 """Einstellungen und lokale Daten (Fortschritt, Logs)."""
+import ipaddress
 import json
 import os
+import re
 import time
+from urllib.parse import urlsplit
 from pathlib import Path
 
 DATEN = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "jarvis-kino"
@@ -40,15 +43,32 @@ def _atomar_schreiben(pfad, daten):
     os.replace(tmp, pfad)
 
 
+def _lokaler_host(host):
+    host = host.strip("[]").lower()
+    if host == "localhost" or host.endswith(".local") or "." not in host:
+        return True
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
 def normalisiere_adresse(text):
+    """Macht aus einer eingetippten oder eingefügten Adresse die Kino-Basis „…/kino/“.
+    Ohne Angabe: http für Heimnetz (IP, .local, Rechnername), sonst https."""
     text = (text or "").strip()
     if not text:
         return ""
     if "://" not in text:
-        text = "http://" + text
-    if not text.rstrip("/").endswith("/kino"):
-        text = text.rstrip("/") + "/kino"
-    return text.rstrip("/") + "/"
+        host = re.match(r"\[[^\]]*\]|[^/:?#]*", text).group(0)
+        text = ("http://" if _lokaler_host(host) else "https://") + text
+    teile = urlsplit(text)
+    if not teile.netloc or teile.scheme.lower() not in ("http", "https"):
+        return ""
+    treffer = re.search(r"/kino(?=/|$)", teile.path)
+    pfad = teile.path[:treffer.end()] if treffer else teile.path.rstrip("/") + "/kino"
+    return f"{teile.scheme.lower()}://{teile.netloc.lower()}{pfad}/"
 
 
 def laden():
