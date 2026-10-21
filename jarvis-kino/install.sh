@@ -147,6 +147,14 @@ main() {
     UOSC_TITEL="$APP.neu/mpv/scripts/uosc_shared/elements/TopBar.lua"
     sed -i 's/^\t\tif state.has_playlist then$/\t\tif false then/' "$UOSC_TITEL"
     grep -q 'if false then' "$UOSC_TITEL" || { rot "uosc-Anpassung (Titelleiste) fehlgeschlagen."; exit 1; }
+    # Menü-Überschrift ruhig: dunkelgrau mit heller Schrift, ohne Karomuster
+    UOSC_MENUE="$APP.neu/mpv/scripts/uosc_shared/elements/Menu.lua"
+    sed -i -e 's/^\t\t\t\tcolor = fg, opacity = opacity \* 0.8, radius = 2,$/\t\t\t\tcolor = bg, opacity = opacity, radius = 2,/' \
+           -e 's/^\t\t\t\tsize = 80, color = bg, opacity = opacity \* 0.1,$/\t\t\t\tsize = 80, color = bg, opacity = 0,/' \
+           -e 's/^\t\t\t\tsize = self.font_size, bold = true, color = bg, wrap = 2, opacity = opacity,$/\t\t\t\tsize = self.font_size, bold = true, color = bgt, wrap = 2, opacity = opacity,/' \
+           "$UOSC_MENUE"
+    [ "$(grep -c 'color = bg, opacity = opacity, radius = 2,\|size = 80, color = bg, opacity = 0,\|bold = true, color = bgt, wrap = 2' "$UOSC_MENUE")" = 3 ] \
+        || { rot "uosc-Anpassung (Menü) fehlgeschlagen."; exit 1; }
 
     rm -rf "$APP.alt"
     [ -d "$APP" ] && mv "$APP" "$APP.alt"

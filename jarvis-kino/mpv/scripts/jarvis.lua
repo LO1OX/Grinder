@@ -344,6 +344,20 @@ mp.observe_property("pause", "bool", function(_, p)
     zeichnen()
 end)
 
+-- Menü über uosc öffnen; nie mit kaputtem JSON (sonst bricht das Skript ab)
+local function menue_oeffnen(menue, untermenue)
+    local json, fehler = utils.format_json(menue)
+    if not json then
+        msg.error("Menü nicht darstellbar: " .. tostring(fehler))
+        return
+    end
+    if untermenue then
+        mp.commandv("script-message-to", "uosc", "open-menu", json, untermenue)
+    else
+        mp.commandv("script-message-to", "uosc", "open-menu", json)
+    end
+end
+
 -- ------------------------------------------------------------- Folgen-Menü
 local function folgen_menue()
     if #daten.folgen < 2 then
@@ -416,11 +430,7 @@ local function folgen_menue()
         selected_index = auswahl,
         search_style = "on_demand",
     }
-    if offen then
-        mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menue), offen)
-    else
-        mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menue))
-    end
+    menue_oeffnen(menue, offen)
 end
 
 -- ------------------------------------------------- Tonspur & Untertitel (deutsch)
@@ -477,7 +487,7 @@ local function spuren_menue(art)
     end
     local menue = { type = "jarvis-" .. art, title = art == "audio" and "Tonspur" or "Untertitel",
                     items = items, selected_index = auswahl }
-    mp.commandv("script-message-to", "uosc", "open-menu", utils.format_json(menue))
+    menue_oeffnen(menue)
 end
 
 mp.add_key_binding(nil, "ton", function() spuren_menue("audio") end)
