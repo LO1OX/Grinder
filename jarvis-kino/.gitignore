@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# wird bei der Installation geladen
+mpv/scripts/uosc.lua
+mpv/scripts/uosc_shared/
+mpv/fonts/

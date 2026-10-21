@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Jarvis-Design: dunkle Graustufen -->
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2c2e"/>
+      <stop offset="1" stop-color="#0a0a0b"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5f5f7"/>
+      <stop offset="1" stop-color="#8e8e93"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#h)"/>
+  <rect x="8.5" y="8.5" width="239" height="239" rx="55.5" fill="none" stroke="#ebebf5" stroke-opacity="0.12"/>
+  <path d="M98 76c0-9 10-15 18-10l78 52c7 5 7 15 0 20l-78 52c-8 5-18-1-18-10z" fill="url(#g)"/>
+</svg>
