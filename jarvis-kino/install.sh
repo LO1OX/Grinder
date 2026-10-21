@@ -138,6 +138,10 @@ main() {
     UOSC_UTILS="$APP.neu/mpv/scripts/uosc_shared/lib/utils.lua"
     sed -i 's/^\treturn 255 - math.ceil(255 \* opacity)$/\treturn 255 - math.ceil(255 * math.max(0, math.min(1, opacity)))/' "$UOSC_UTILS"
     grep -q 'math.max(0, math.min(1, opacity))' "$UOSC_UTILS" || { rot "uosc-Anpassung fehlgeschlagen."; exit 1; }
+    # Kein riesiger Ladekreisel mitten im Bild – die Zeitleiste zeigt den Puffer ohnehin.
+    UOSC_PUFFER="$APP.neu/mpv/scripts/uosc_shared/elements/BufferingIndicator.lua"
+    sed -i 's/^\telseif player and cache and state.uncached_ranges then self.enabled = true end$/\tend/' "$UOSC_PUFFER"
+    grep -q 'uncached_ranges then self.enabled = true' "$UOSC_PUFFER" && { rot "uosc-Anpassung (Ladekreisel) fehlgeschlagen."; exit 1; }
 
     rm -rf "$APP.alt"
     [ -d "$APP" ] && mv "$APP" "$APP.alt"

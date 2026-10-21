@@ -26,32 +26,15 @@ def _logging():
     sys.excepthook = unerwartet
 
 
-def _jarvis_design(app):
-    """Dunkle Graustufen wie im Jarvis-Kino (auch für Einstellungen und Meldungen)."""
-    from PyQt6.QtGui import QColor, QPalette
-
-    app.setStyle("Fusion")
-    farben = {
-        QPalette.ColorRole.Window: "#1c1c1e", QPalette.ColorRole.WindowText: "#f5f5f7",
-        QPalette.ColorRole.Base: "#0a0a0b", QPalette.ColorRole.AlternateBase: "#2c2c2e",
-        QPalette.ColorRole.Text: "#f5f5f7", QPalette.ColorRole.Button: "#2c2c2e",
-        QPalette.ColorRole.ButtonText: "#f5f5f7", QPalette.ColorRole.Highlight: "#e5e5ea",
-        QPalette.ColorRole.HighlightedText: "#0a0a0b", QPalette.ColorRole.ToolTipBase: "#2c2c2e",
-        QPalette.ColorRole.ToolTipText: "#f5f5f7", QPalette.ColorRole.PlaceholderText: "#8e8e93",
-        QPalette.ColorRole.Link: "#e5e5ea",
-    }
-    palette = QPalette()
-    for rolle, farbe in farben.items():
-        palette.setColor(rolle, QColor(farbe))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#636366"))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#636366"))
-    app.setPalette(palette)
-    app.setStyleSheet(
-        "QPushButton{padding:6px 14px;border-radius:8px;background:#2c2c2e;border:1px solid #3a3a3c}"
-        "QPushButton:hover{background:#3a3a3c}"
-        "QLineEdit,QComboBox,QListWidget,QPlainTextEdit{border-radius:8px;border:1px solid #3a3a3c;padding:4px}"
-        "QGroupBox{border:1px solid #2c2c2e;border-radius:12px;margin-top:14px;padding:10px}"
-        "QGroupBox::title{subcontrol-origin:margin;left:12px;color:#8e8e93}")
+def _plattform_waehlen():
+    """Unter GNOME mit Wayland hat Qt nur einfache eigene Fensterrahmen. Über XWayland
+    zeichnet GNOME den gewohnten Rahmen selbst (Titelleiste, Vollbild ohne Rand)."""
+    if os.environ.get("QT_QPA_PLATFORM") or os.environ.get("JARVIS_KINO_WAYLAND") == "1":
+        return
+    desktop = (os.environ.get("XDG_CURRENT_DESKTOP", "") + ":" + os.environ.get("XDG_SESSION_DESKTOP", "")).lower()
+    if os.environ.get("WAYLAND_DISPLAY") and os.environ.get("DISPLAY") and any(
+            d in desktop for d in ("gnome", "ubuntu", "unity", "pantheon", "budgie", "cinnamon")):
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 
 def main():
@@ -67,6 +50,7 @@ def main():
         return 0
 
     _logging()
+    _plattform_waehlen()
     # Chromium soll Videos nie selbst dekodieren müssen – das macht mpv.
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--autoplay-policy=no-user-gesture-required")
 
@@ -82,7 +66,6 @@ def main():
     app.setApplicationName("Jarvis Kino")
     app.setOrganizationName("Jarvis")
     app.setDesktopFileName("jarvis-kino")
-    _jarvis_design(app)
 
     # Nur ein Fenster: ein zweiter Start holt das vorhandene nach vorn.
     name = f"jarvis-kino-{os.getuid()}"
@@ -98,11 +81,11 @@ def main():
     server.listen(name)
 
     einst = einstellungen.laden()
-    if einstellungen.erster_start() or args.einstellungen:
+    if args.einstellungen:
         dialog = EinstellungenDialog(einst)
         if dialog.exec():
             einst = dialog.werte()
-        einstellungen.speichern(einst)
+            einstellungen.speichern(einst)
 
     fenster = Hauptfenster(einst)
 

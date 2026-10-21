@@ -2,7 +2,7 @@
 --  * Folgen & Staffeln als scrollbares Menü (Taste E / Knopf unten rechts)
 --  * "Nächste Folge" mit Countdown, vorherige/nächste Folge (N / P)
 --  * "Intro überspringen" (Kapitel oder Serien-Schätzung, Taste S)
---  * Fortsetzen an der letzten Stelle, Pause-Ansicht "Du siehst gerade"
+--  * Fortsetzen an der letzten Stelle (still, ohne Einblendung), Pause-Ansicht
 --  * Wiederaufnahme bei Verbindungsabbruch an derselben Stelle
 -- Exit-Codes für die App: 4 = Verbindung dauerhaft weg, 5 = Video nicht ladbar.
 
@@ -98,12 +98,6 @@ mp.add_hook("on_load", 50, function()
     end
 end)
 
-mp.register_event("file-loaded", function()
-    if fortsetzen_bei and (versuche[aktuelle_id] or 0) == 0 then
-        mp.osd_message("Fortgesetzt bei " .. zeit_text(fortsetzen_bei) .. "   ·   Pos1 = von vorn", 4)
-    end
-end)
-
 local bereit = false  -- erst nach dem Sprung zur gespeicherten Stelle Positionen übernehmen
 mp.register_event("start-file", function() bereit = false end)
 mp.register_event("playback-restart", function() bereit = true end)
@@ -133,7 +127,7 @@ local function neu_versuchen(grund, id, nach_fehler)
     end
     local warte = WARTEZEITEN[n]
     msg.warn(string.format("%s bei %s, Versuch %d in %d s", grund, zeit_text(stelle[id]), n, warte))
-    mp.osd_message(string.format("%s – neuer Versuch in %d s (%d/%d) …", grund, warte, n, #WARTEZEITEN), warte + 1)
+    mp.osd_message(string.format("%s – neuer Versuch in %d s …", grund, warte), warte + 1)
     mp.add_timeout(warte, function()
         if index then mp.commandv("playlist-play-index", tostring(index)) end
         mp.set_property_bool("pause", false)
@@ -244,13 +238,13 @@ local function zeichnen()
         local klein = h * 0.026
         local x, y = w * 0.06, h * 0.36
         teile[#teile + 1] = string.format("{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H60&\\p1}m 0 0 l %d 0 %d %d 0 %d{\\p0}", w, w, h, h)
-        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnNoto Sans\\fs%d\\bord0\\shad0\\1c&HB3B3B3&}Du siehst gerade", x, y, klein)
+        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad0\\1c&HB3B3B3&}Du siehst gerade", x, y, klein)
         local titel = daten.serie or (f and f.titel) or mp.get_property("media-title", "")
-        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnNoto Sans\\b1\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6, gross, ass_text(titel))
+        teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\b1\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6, gross, ass_text(titel))
         if f and ist_serie() then
             local zeile = (f.staffel and ("Staffel " .. f.staffel .. ", ") or "") .. "Folge " .. tostring(f.folge or f.index)
             if f.titel and f.titel ~= "" and f.titel ~= titel then zeile = zeile .. ": " .. f.titel end
-            teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnNoto Sans\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6 + gross * 1.3, klein * 1.15, ass_text(zeile))
+            teile[#teile + 1] = string.format("{\\an7\\pos(%d,%d)\\fnUbuntu\\fs%d\\bord0\\shad1\\1c&HFFFFFF&}%s", x, y + klein * 1.6 + gross * 1.3, klein * 1.15, ass_text(zeile))
         end
     end
 
@@ -265,7 +259,7 @@ local function zeichnen()
             "{\\an7\\pos(%d,%d)\\bord1\\shad0\\blur0.6\\1c%s\\1a&H%s&\\3c&HF5EBEB&\\3a&H%s&\\p1}%s{\\p0}",
             knopf.x, knopf.y, hinter, hell and "08" or "38", hell and "FF" or "A0",
             abgerundet(knopf.w, knopf.h, knopf.h * 0.3))
-        teile[#teile + 1] = string.format("{\\an5\\pos(%d,%d)\\fnNoto Sans\\b1\\fs%d\\bord0\\shad0\\1c%s}%s",
+        teile[#teile + 1] = string.format("{\\an5\\pos(%d,%d)\\fnUbuntu\\b1\\fs%d\\bord0\\shad0\\1c%s}%s",
             knopf.x + knopf.w / 2, knopf.y + knopf.h / 2, fs, schrift, ass_text(knopf.text))
     end
 

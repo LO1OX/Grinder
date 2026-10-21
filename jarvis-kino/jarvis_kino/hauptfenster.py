@@ -7,8 +7,8 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from PyQt6.QtCore import QByteArray, QFile, QIODevice, QObject, Qt, QTimer, QUrl, pyqtSlot
-from PyQt6.QtGui import QAction, QIcon, QKeySequence
+from PyQt6.QtCore import QByteArray, QFile, QIODevice, QObject, Qt, QTimer, QUrl, QUrlQuery, pyqtSlot
+from PyQt6.QtGui import QAction, QColor, QIcon, QKeySequence, QPalette
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkInformation, QNetworkRequest
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngineScript,
@@ -27,23 +27,57 @@ from .player import PlayerSitzung
 log = logging.getLogger("jarvis-kino")
 HIER = Path(__file__).resolve().parent
 
-# Jarvis-Design: dunkle Graustufen, weiche Übergänge (wie macOS/iOS)
-FEHLERSEITE = """<!doctype html><html lang="de"><head><meta charset="utf-8"><style>
-body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0b;
-color:#f5f5f7;font-family:'Noto Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.k{max-width:620px;padding:36px 40px;text-align:center;background:#1c1c1e;border-radius:22px;
-border:1px solid rgba(235,235,245,.08);animation:ein .5s cubic-bezier(.2,.8,.2,1)}
-@keyframes ein{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
-h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0 0 10px}
-p{color:rgba(235,235,245,.6);font-size:16px;line-height:1.55;margin:0}
-a{display:inline-block;margin:22px 6px 0;padding:11px 22px;border-radius:12px;text-decoration:none;font-weight:600;
-font-size:15px;transition:transform .2s,background .2s}a:hover{transform:scale(1.03)}
-.h{background:#e5e5ea;color:#0a0a0b}.n{background:#2c2c2e;color:#f5f5f7}.z{color:rgba(235,235,245,.35);font-size:13px;margin-top:20px}
-</style></head><body><div class="k"><h1>{titel}</h1><p>{text}</p>
-<a class="h" href="jarviskino://neu">Erneut versuchen</a><a class="n" href="jarviskino://einstellungen">Adressen bearbeiten</a>
-<p class="z">{zusatz}</p></div><script>
-var s={sekunden};setInterval(function(){if(s>0){s--;var e=document.getElementById('c');if(e)e.textContent=s;}},1000);
+# Startseite: erst nur ein Ladekreisel, während die App Jarvis sucht. Nur wenn
+# gar nichts erreichbar ist, erscheint ein Knopf (und bei Bedarf ein Adressfeld).
+STARTSEITE = """<!doctype html><html lang="de"><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#000;color:#f5f5f7;overflow:hidden;
+font-family:system-ui,-apple-system,'Ubuntu','Noto Sans',sans-serif;-webkit-font-smoothing:antialiased}
+body{display:flex;align-items:center;justify-content:center}
+.z{display:none;flex-direction:column;align-items:center;text-align:center;animation:ein .4s ease}
+.an{display:flex}
+@keyframes ein{from{opacity:0}to{opacity:1}}
+.kreis{width:30px;height:30px;border-radius:50%;border:2.5px solid rgba(235,235,245,.16);
+border-top-color:rgba(235,235,245,.8);animation:dreh .9s linear infinite}
+@keyframes dreh{to{transform:rotate(360deg)}}
+.leise{color:rgba(235,235,245,.45);font-size:13px;margin-top:18px}
+h1{font-size:20px;font-weight:600;margin:0 0 22px}
+button{font:inherit;font-size:15px;font-weight:600;border:0;border-radius:999px;padding:10px 26px;cursor:pointer;
+background:#f5f5f7;color:#000;transition:opacity .2s}
+button:disabled{opacity:.4;cursor:default}
+a{color:rgba(235,235,245,.45);font-size:13px;margin-top:18px;cursor:pointer;text-decoration:none}
+a:hover{color:rgba(235,235,245,.8)}
+form{display:none;margin-top:16px;gap:8px}form.an{display:flex}
+input{font:inherit;font-size:14px;width:300px;padding:9px 14px;border-radius:999px;border:1px solid rgba(235,235,245,.18);
+background:rgba(235,235,245,.06);color:#f5f5f7;outline:none}
+input:focus{border-color:rgba(235,235,245,.45)}
+form button{padding:9px 18px;font-size:14px}
+</style></head><body>
+<div id="suche" class="z"><div class="kreis"></div></div>
+<div id="fehler" class="z"><h1>Jarvis nicht erreichbar</h1>
+<button id="knopf" onclick="nochmal()">Erneut suchen</button>
+<a onclick="document.getElementById('f').classList.toggle('an');document.getElementById('u').focus()">Adresse eingeben</a>
+<form id="f" onsubmit="event.preventDefault();var v=document.getElementById('u').value.trim();
+if(v)location.href='jarviskino://adresse?u='+encodeURIComponent(v)">
+<input id="u" placeholder="z. B. neue Cloudflare-Adresse" autocomplete="off" spellcheck="false">
+<button type="submit">Verbinden</button></form>
+<div class="leise">Die App sucht automatisch weiter.</div></div>
+<script>
+function zustand(n){['suche','fehler'].forEach(function(i){document.getElementById(i).classList.toggle('an',i===n)});
+var k=document.getElementById('knopf');k.disabled=false;k.textContent='Erneut suchen';}
+function sucht(){var k=document.getElementById('knopf');k.disabled=true;k.textContent='Suche …';}
+function nochmal(){sucht();location.href='jarviskino://suchen';}
+zustand('{zustand}');
 </script></body></html>"""
+
+# Scrollleisten wie unter GNOME: schmal, rund, ohne Pfeile, Spur unsichtbar.
+SCROLLLEISTEN_CSS = (
+    "::-webkit-scrollbar{width:12px;height:12px;background:transparent}"
+    "::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}"
+    "::-webkit-scrollbar-button{display:none;width:0;height:0}"
+    "::-webkit-scrollbar-thumb{background-color:rgba(235,235,245,.28);border-radius:12px;"
+    "border:4px solid transparent;background-clip:content-box;min-height:40px}"
+    "::-webkit-scrollbar-thumb:hover{background-color:rgba(235,235,245,.5);border-width:3px}"
+)
 
 
 class Bruecke(QObject):
@@ -94,7 +128,7 @@ class KinoSeite(QWebEnginePage):
 
     def acceptNavigationRequest(self, url, art, hauptframe):
         if url.scheme() == "jarviskino":
-            QTimer.singleShot(0, lambda: self.fenster.interner_link(url.host()))
+            QTimer.singleShot(0, lambda u=QUrl(url): self.fenster.interner_link(u))
             return False
         return super().acceptNavigationRequest(url, art, hauptframe)
 
@@ -137,7 +171,11 @@ class Hauptfenster(QMainWindow):
         self.setWindowTitle("Jarvis Kino")
         self.setWindowIcon(QIcon.fromTheme("jarvis-kino", QIcon(str(HIER.parent / "jarvis-kino.svg"))))
         self.resize(1440, 900)
-        self.setStyleSheet("QMainWindow{background:#0a0a0b}")
+        # Schwarz wie das Kino: kein heller Rand/Blitz beim Laden oder im Vollbild
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor("#000000"))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
 
         self._web_einrichten()
         self.player = PlayerSitzung(self)
@@ -175,6 +213,18 @@ class Hauptfenster(QMainWindow):
         skript.setRunsOnSubFrames(False)
         self.profil.scripts().insert(skript)
 
+        scroll = QWebEngineScript()
+        scroll.setName("jarvis-scrollleisten")
+        scroll.setSourceCode(
+            "(function(){if(document.getElementById('jarvis-kino-scroll'))return;"
+            "var s=document.createElement('style');s.id='jarvis-kino-scroll';"
+            f"s.textContent={json.dumps(SCROLLLEISTEN_CSS)};"
+            "(document.head||document.documentElement).appendChild(s);})();")
+        scroll.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        scroll.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        scroll.setRunsOnSubFrames(True)
+        self.profil.scripts().insert(scroll)
+
         speicher = self.profil.cookieStore()
         speicher.cookieAdded.connect(self._keks_neu)
         speicher.cookieRemoved.connect(self._keks_weg)
@@ -202,6 +252,7 @@ class Hauptfenster(QMainWindow):
 
         self.ansicht = QWebEngineView(self)
         self.ansicht.setPage(self.seite)
+        self.ansicht.setContentsMargins(0, 0, 0, 0)
         self.ansicht.setZoomFactor(float(self.einst.get("zoom") or 1.0))
         self.setCentralWidget(self.ansicht)
 
@@ -221,7 +272,7 @@ class Hauptfenster(QMainWindow):
         aktion("Größer", ["Ctrl++", "Ctrl+="], lambda: self._zoom(0.1))
         aktion("Kleiner", ["Ctrl+-"], lambda: self._zoom(-0.1))
         aktion("Normale Größe", ["Ctrl+0"], lambda: self._zoom(None))
-        aktion("Andere Jarvis-Adresse suchen", ["Ctrl+Shift+R"], self.adresse_suchen)
+        aktion("Jarvis neu suchen", ["Ctrl+Shift+R"], self.adresse_suchen)
         aktion("Einstellungen …", ["Ctrl+,"], self.einstellungen_zeigen)
         aktion("Beenden", ["Ctrl+Q"], self.close)
         self.ansicht.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
@@ -240,7 +291,7 @@ class Hauptfenster(QMainWindow):
             self.showFullScreen()
         else:
             self.showMaximized()
-        self._fehlerseite("Verbinde mit Jarvis …", "Suche nach Heimnetz, jarvis.local und Cloudflare.", 0, warten=True)
+        self._startseite("suche")
         self.adresse_suchen()
 
     def adresse_suchen(self):
@@ -280,29 +331,40 @@ class Hauptfenster(QMainWindow):
         self.seite.load(QUrl(ziel))
 
     def _nichts_erreichbar(self):
-        sekunden = 10
-        self._fehlerseite(
-            "Jarvis ist gerade nicht erreichbar",
-            "Geprüft: " + ", ".join(urlsplit(a).netloc for a in self.einst["adressen"])
-            + ".<br>Ist der Server an? Bist du online? Unterwegs brauchst du die aktuelle Cloudflare-Adresse.",
-            sekunden)
+        log.info("Jarvis unter keiner Adresse erreichbar: %s", ", ".join(urlsplit(a).netloc for a in self.einst["adressen"]))
+        if self.player.laeuft:
+            pass  # der Player zeigt selbst an, dass er neu verbindet
+        elif self.seite.url().toString() == "about:blank":
+            self.seite.runJavaScript("window.zustand&&zustand('fehler')")
+        else:
+            self._startseite("fehler")
         if self.letzter_start and self.letzter_start.get("neustart_wartet"):
             self.neustarts += 1
             if self.neustarts > 6:
                 self.letzter_start = None
-        self.wiederholen.start(sekunden * 1000)
+        self.wiederholen.start(10_000)
 
-    def _fehlerseite(self, titel, text, sekunden, warten=False):
-        zusatz = "" if warten or not sekunden else 'Neuer Versuch in <span id="c">%d</span> s …' % sekunden
-        html = (FEHLERSEITE.replace("{titel}", titel).replace("{text}", text)
-                .replace("{zusatz}", zusatz).replace("{sekunden}", str(sekunden)))
-        self.seite.setHtml(html, QUrl("about:blank"))
+    def _startseite(self, zustand):
+        self.seite.setHtml(STARTSEITE.replace("{zustand}", zustand), QUrl("about:blank"))
 
-    def interner_link(self, was):
-        if was == "einstellungen":
-            self.einstellungen_zeigen()
-        else:
-            self.adresse_suchen()
+    def interner_link(self, url):
+        was = url.host()
+        if was == "adresse":
+            self._adresse_eintragen(QUrlQuery(url).queryItemValue("u", QUrl.ComponentFormattingOption.FullyDecoded))
+        self.adresse_suchen()
+
+    def _adresse_eintragen(self, text):
+        adresse = einstellungen.normalisiere_adresse(text)
+        if not adresse:
+            return
+        adressen = [a for a in self.einst["adressen"] if a != adresse]
+        if "trycloudflare.com" in adresse:
+            # Schnell-Tunnel bekommen bei jedem Neustart eine neue Adresse – die alte ist dann tot.
+            adressen = [a for a in adressen if "trycloudflare.com" not in a]
+        adressen.append(adresse)
+        self.einst["adressen"] = adressen
+        einstellungen.speichern(self.einst)
+        log.info("Adresse hinzugefügt: %s", adresse)
 
     def _laedt(self):
         # Neue Seite = das <video>-Element der alten Seite gibt es nicht mehr.
@@ -318,7 +380,7 @@ class Hauptfenster(QMainWindow):
                 self.ziel_pfad = url[len(self.basis):]
             return
         log.warning("Seite konnte nicht geladen werden: %s", url)
-        self._fehlerseite("Verbindung zu Jarvis verloren", "Suche eine andere Adresse …", 0, warten=True)
+        self._startseite("suche")
         QTimer.singleShot(500, self.adresse_suchen)
 
     def neu_laden(self):

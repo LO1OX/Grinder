@@ -66,10 +66,6 @@ def speichern(daten):
     _atomar_schreiben(KONFIG, daten)
 
 
-def erster_start():
-    return not KONFIG.exists()
-
-
 class Fortschritt:
     """Lokale Sicherung der Wiedergabestelle, falls der Server nicht erreichbar war."""
 
