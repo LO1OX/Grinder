@@ -22,7 +22,7 @@ def grafikkarten():
     if not shutil.which("lspci"):
         return []
     try:
-        aus = subprocess.run(["lspci"], capture_output=True, text=True, timeout=10).stdout
+        aus = subprocess.run(["lspci"], capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
     except (OSError, subprocess.SubprocessError):
         return []
     karten = []
@@ -47,7 +47,7 @@ def _testvideo(ordner, name, kandidaten):
         befehl = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
                   "-i", "testsrc2=size=1280x720:rate=24", "-t", "1"] + opts + [str(ziel)]
         try:
-            if subprocess.run(befehl, capture_output=True, timeout=120).returncode == 0 and ziel.exists():
+            if subprocess.run(befehl, capture_output=True, timeout=120, stdin=subprocess.DEVNULL).returncode == 0 and ziel.exists():
                 return ziel
         except (OSError, subprocess.SubprocessError):
             pass
@@ -59,7 +59,7 @@ def dekoder_testen(datei, hwdec="auto-copy-safe"):
     befehl = ["mpv", "--no-config", "--vo=null", "--ao=null", f"--hwdec={hwdec}", "--hwdec-codecs=all",
               "--frames=12", "--msg-level=all=no,vd=v", "--msg-color=no", str(datei)]
     try:
-        lauf = subprocess.run(befehl, capture_output=True, text=True, timeout=60)
+        lauf = subprocess.run(befehl, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
     m = HW_ZEILE.search(lauf.stdout + lauf.stderr)
